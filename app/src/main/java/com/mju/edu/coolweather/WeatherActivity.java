@@ -1,7 +1,9 @@
 package com.mju.edu.coolweather;
 
-import androidx.appcompat.app.AppCompatActivity;
-
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Build;
@@ -9,17 +11,29 @@ import android.os.Bundle;
 import android.os.Debug;
 import android.preference.PreferenceManager;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.LayoutInflater;
+import android.view.MenuItem;
 import android.view.View;
+import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.ActionBar;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.view.GravityCompat;
+import androidx.drawerlayout.widget.DrawerLayout;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
+
 import com.bumptech.glide.Glide;
 import com.mju.edu.coolweather.gson.Forecast;
 import com.mju.edu.coolweather.gson.Weather;
+import com.mju.edu.coolweather.service.AutoUpdateService;
 import com.mju.edu.coolweather.utils.HttpUtil;
 import com.mju.edu.coolweather.utils.Utility;
 
@@ -43,8 +57,13 @@ public class WeatherActivity extends AppCompatActivity {
     private TextView comfortText;
     private TextView carWashText;
     private TextView sportText;
-    private  String weatherId;
+    public static   String weatherId;
     private ImageView bingPicView;
+    public SwipeRefreshLayout swipeRefreshLayout;
+    public DrawerLayout drawerLayout;
+    private Button button;
+    private LocalReceive localReceive;
+    private LocalBroadcastManager manager;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -66,6 +85,10 @@ public class WeatherActivity extends AppCompatActivity {
         carWashText=findViewById(R.id.car_wash_text);
         sportText=findViewById(R.id.sport_text);
         bingPicView=findViewById(R.id.bing_pic_img);
+        swipeRefreshLayout=findViewById(R.id.swipe_refresh);
+        drawerLayout=findViewById(R.id.drawer_layout);
+        swipeRefreshLayout.setColorSchemeResources(R.color.colorPrimary);
+        button = findViewById(R.id.nav_button);
         weatherId=getIntent().getStringExtra("weatherId");
         SharedPreferences sharedPreferences= PreferenceManager.getDefaultSharedPreferences(this);
         String weatherContent = sharedPreferences.getString(weatherId, null);
@@ -82,7 +105,32 @@ public class WeatherActivity extends AppCompatActivity {
         }else {
             loadBingPic();
         }
+        swipeRefreshLayout.setOnRefreshListener(new SwipeRefreshLayout.OnRefreshListener() {
+            @Override
+            public void onRefresh() {
+                requestWeather();
+            }
+        });
+        button.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                drawerLayout.openDrawer(GravityCompat.START);
+            }
+        });
+        IntentFilter filter=new IntentFilter("com.mju.edu.coolweather.LOCAL_BROADCAST");
+        localReceive=new LocalReceive();
+        manager=LocalBroadcastManager.getInstance(this);
+        manager.registerReceiver(localReceive,filter);
+//        Intent intent=new Intent(this, AutoUpdateService.class);
+//        startService(intent);
     }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        manager.unregisterReceiver(localReceive);
+    }
+
     public void requestWeather(){
         final String weatherUrl="http://guolin.tech/api/weather?cityid="+weatherId+"&key=aafe8477030f4df9a339a64d8c0a875e";
         HttpUtil.sendOkHttpRequest(weatherUrl, new Callback() {
@@ -93,6 +141,7 @@ public class WeatherActivity extends AppCompatActivity {
                     @Override
                     public void run() {
                         Toast.makeText(WeatherActivity.this,"获取天气数据错误",Toast.LENGTH_SHORT).show();
+                        swipeRefreshLayout.setRefreshing(false);
                     }
                 });
             }
@@ -112,6 +161,7 @@ public class WeatherActivity extends AppCompatActivity {
                         }else {
                             Toast.makeText(WeatherActivity.this,"获取天气数据失败",Toast.LENGTH_SHORT).show();
                         }
+                        swipeRefreshLayout.setRefreshing(false);
                     }
                 });
             }
@@ -119,7 +169,7 @@ public class WeatherActivity extends AppCompatActivity {
         loadBingPic();
     }
 
-    public void showWeatherInfo(Weather weather){
+    public  void showWeatherInfo(Weather weather){
         titleCity.setText(weather.basic.cityName);
         titleUpdateTime.setText(weather.basic.update.updateTime);
         degreeText.setText(weather.now.temperature);
@@ -166,5 +216,13 @@ public class WeatherActivity extends AppCompatActivity {
                 });
             }
         });
+    }
+    class LocalReceive extends BroadcastReceiver{
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            Log.e("weatheractivity","收到消息："+intent.toString());
+            requestWeather();
+            loadBingPic();
+        }
     }
 }
